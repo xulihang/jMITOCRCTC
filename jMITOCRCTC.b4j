@@ -1,0 +1,92 @@
+﻿AppType=JavaFX
+Build1=Default,b4j.example
+File1=Layout1.bjl
+FileGroup1=Default Group
+Group=Default Group
+Library1=javaobject
+Library2=jcore
+Library3=jfx
+Library4=jxui
+Library5=threading
+Module1=cv2
+Module2=cvMat
+Module3=jMITOCRCTC
+NumberOfFiles=1
+NumberOfLibraries=5
+NumberOfModules=3
+Version=10
+@EndOfDesignText@
+#Region Project Attributes 
+	#MainFormWidth: 600
+	#MainFormHeight: 600 
+#End Region
+
+#AdditionalJar: mitOCR.jar
+#AdditionalJar: opencv-490
+#AdditionalJar: onnxruntime-1.20.0-nodll
+
+Sub Process_Globals
+	Private fx As JFX
+	Private MainForm As Form
+	Private xui As XUI 
+	Private Button1 As B4XView
+End Sub
+
+Sub AppStart (Form1 As Form, Args() As String)
+	MainForm = Form1
+	MainForm.RootPane.LoadLayout("Layout1")
+	MainForm.Show
+	cv2.Initialize
+	loadOpenCV
+	loadOnnxruntime
+	Dim ocr As jMITOCRCTC
+	ocr.Initialize
+	Log("loading model")
+	Dim modelPath As String = File.Combine(File.DirApp,"ocr_ctc_fp16.onnx")
+	Dim vocabPath As String = File.Combine(File.DirApp,"alphabet-all-v5.txt")
+	wait for (ocr.loadModelAsync(modelPath,vocabPath)) complete (done As Object)
+	Dim srcByte() As Byte = File.ReadBytes(File.DirApp,"clipped.jpg")
+	Dim src As cvMat = cv2.bytesToMat(srcByte)
+	wait for (ocr.recognizeAsync(src)) complete (result As Map)
+	Log(result)
+End Sub
+
+Sub Button1_Click
+	xui.MsgboxAsync("Hello World!", "B4X")
+End Sub
+
+
+Sub loadOpenCV
+	Dim System As JavaObject
+	System.InitializeStatic("java.lang.System")
+	System.RunMethod("loadLibrary",Array(cv2.NATIVE_LIBRARY_NAME))
+End Sub
+
+'windows, mac or linux
+Sub DetectOS As String
+	Dim os As String = GetSystemProperty("os.name", "").ToLowerCase
+	If os.Contains("win") Then
+		Return "windows"
+	Else If os.Contains("mac") Then
+		Return "mac"
+	Else
+		Return "linux"
+	End If
+End Sub
+
+Sub loadOnnxruntime
+	Dim System As JavaObject
+	System.InitializeStatic("java.lang.System")
+	Dim os As String = DetectOS
+	If os = "windows" Then
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"onnxruntime.dll")))
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"onnxruntime4j_jni.dll")))
+	else if os = "mac" Then
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"libonnxruntime.dylib")))
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"libonnxruntime4j_jni.dylib")))
+	Else
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"libonnxruntime.so")))
+		System.RunMethod("load",Array(File.Combine(File.DirApp,"libonnxruntime4j_jni.so")))
+	End If
+End Sub
+
