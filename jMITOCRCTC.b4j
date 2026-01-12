@@ -45,10 +45,103 @@ Sub AppStart (Form1 As Form, Args() As String)
 	Dim modelPath As String = File.Combine(File.DirApp,"ocr_ctc_fp16.onnx")
 	Dim vocabPath As String = File.Combine(File.DirApp,"alphabet-all-v5.txt")
 	wait for (ocr.loadModelAsync(modelPath,vocabPath)) complete (done As Object)
-	Dim srcByte() As Byte = File.ReadBytes(File.DirApp,"clipped.jpg")
+	Dim srcByte() As Byte = File.ReadBytes(File.DirApp,"image.jpg")
 	Dim src As cvMat = cv2.bytesToMat(srcByte)
 	wait for (ocr.recognizeAsync(src)) complete (result As Map)
 	Log(result)
+	Dim chars As List = result.Get("chars")
+	For Each charMap As Map In chars
+		Log(charMap)
+	Next
+	Log(MergeCharsByColor(chars))
+End Sub
+
+Sub MergeCharsByColor(chars As List) As String
+	If chars.Size = 0 Then Return ""
+    
+	Dim result As StringBuilder
+	result.Initialize
+    
+	Dim currentRun As StringBuilder
+	currentRun.Initialize
+    
+	Dim currentColor As String = ""
+	Dim prevColor As String = ""
+    
+	For i = 0 To chars.Size - 1
+		Dim charMap As Map = chars.Get(i)
+		Dim character As String = charMap.Get("character")
+		Dim color As String = GetRGBString(charMap)
+        
+		If i = 0 Then
+			' 第一个字符
+			currentColor = color
+			currentRun.Append(character)
+			prevColor = color
+		Else
+			' 检查颜色是否相似
+			If SimilarPixel(color, prevColor) Then
+				' 颜色相似，添加到当前run
+				currentRun.Append(character)
+			Else
+				' 颜色不相似，结束当前run并开始新的run
+				If currentRun.Length > 0 Then
+					result.Append(CreateColorTag(currentColor, currentRun.ToString))
+					currentRun.Initialize
+				End If
+                
+				currentRun.Append(character)
+				currentColor = color
+				prevColor = color
+			End If
+		End If
+	Next
+    
+	' 添加最后一个run
+	If currentRun.Length > 0 Then
+		result.Append(CreateColorTag(currentColor, currentRun.ToString))
+	End If
+    
+	Return result.ToString
+End Sub
+
+Sub CreateColorTag(rgb As String, text As String) As String
+	Dim values() As String = Regex.Split(",",rgb)
+	Dim color As Paint = fx.Colors.RGB(values(2),values(1),values(0))
+	Dim ColorInt As Int  = fx.Colors.To32Bit(color)
+	Dim HexARGB As String = Bit.ToHexString(ColorInt)
+	Dim HexRGB As String = HexARGB.SubString2(2,8)
+	Return "[color=#" & HexRGB & "]" & text & "[/color]"
+End Sub
+
+Sub SimilarPixel(color1 As String,color2 As String) As Boolean
+	Try
+		Dim values1(),values2() As String
+		values1=Regex.Split(",",color1)
+		values2=Regex.Split(",",color2)
+		Dim totalDiff As Int
+		For i=0 To values1.Length-1
+			totalDiff=totalDiff+Abs(values1(i)-values2(i))
+		Next
+		If totalDiff<50*values1.Length Then
+			Return True
+		Else
+			Return False
+		End If
+	Catch
+		Log(LastException)
+	End Try
+	Return False
+End Sub
+
+Sub GetRGBString(charMap As Map) As String
+	' 使用前景色或背景色中更显著的颜色
+	' 这里简单使用前景色
+	Dim r As Int = charMap.Get("fr") * 255
+	Dim g As Int = charMap.Get("fg") * 255
+	Dim b As Int = charMap.Get("fb") * 255
+    
+	Return r&","&g&","&b
 End Sub
 
 Sub Button1_Click
